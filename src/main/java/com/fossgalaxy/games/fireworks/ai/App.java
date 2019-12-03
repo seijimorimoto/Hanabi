@@ -20,8 +20,8 @@ public class App
     public static void main( String[] args )
     {
         int numPlayers = 4;
-        int numGames = 100;
-        String agentName = "SampleRandom";
+        int numGames = 5;
+        String agentName = "HisGranAha";
 
         Random random = new Random();
         StatsSummary statsSummary = new BasicStats();
