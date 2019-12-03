@@ -1,4 +1,4 @@
-package com.fossgalaxy.games.fireworks.ai.username;
+package com.fossgalaxy.games.fireworks.ai.HisGranAha;
 
 import com.fossgalaxy.games.fireworks.ai.Agent;
 import com.fossgalaxy.games.fireworks.ai.rule.PlaySafeCard;

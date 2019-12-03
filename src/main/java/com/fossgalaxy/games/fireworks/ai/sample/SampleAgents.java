@@ -41,7 +41,7 @@ public class SampleAgents {
 
     // see https://git.fossgalaxy.com/iggi/hanabi/blob/master/src/main/java/com/fossgalaxy/games/fireworks/ai/mcts/MCTS.java
     @AgentBuilderStatic("hanabi_mcts")
-    public static Agent buildCompRandom() {
+    public static Agent buildCompMCTS() {
         return MCTS.buildMCTSND();
     }
 
