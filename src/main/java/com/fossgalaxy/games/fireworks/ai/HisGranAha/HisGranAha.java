@@ -2,49 +2,38 @@ package com.fossgalaxy.games.fireworks.ai.HisGranAha;
 
 import com.fossgalaxy.games.fireworks.ai.Agent;
 import com.fossgalaxy.games.fireworks.ai.iggi.Utils;
-import com.fossgalaxy.games.fireworks.ai.mcts.IterationObject;
 import com.fossgalaxy.games.fireworks.ai.rule.logic.DeckUtils;
-import com.fossgalaxy.games.fireworks.ai.sample.SampleAgents;
-import com.fossgalaxy.games.fireworks.annotations.AgentBuilderStatic;
-import com.fossgalaxy.games.fireworks.state.actions.Action;
-import com.fossgalaxy.games.fireworks.state.Card;
-import com.fossgalaxy.games.fireworks.state.Deck;
-import com.fossgalaxy.games.fireworks.state.GameState;
-import com.fossgalaxy.games.fireworks.state.Hand;
-import com.fossgalaxy.games.fireworks.utils.DebugUtils;
+import com.fossgalaxy.games.fireworks.state.*;
+import com.fossgalaxy.games.fireworks.state.actions.*;
+import javafx.util.Pair;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class HisGranAha implements Agent {
-    public static final int DEFAULT_ITERATIONS = 50_000;
-    public static final int DEFAULT_ROLLOUT_DEPTH = 18;
-    public static final int DEFAULT_TREE_DEPTH_MUL = 1;
-    public static final int NO_LIMIT = 100;
+    public static final double EXPLORATION_CONST = Math.sqrt(2);
+    public static final int NUM_ACTIONS = 60;
     public static final int TIME_LIMIT = 1000;
-    protected static final boolean OLD_UCT_BEHAVIOUR = false;
 
-    protected final int roundLength;
-    protected final int rolloutDepth;
-    protected final int treeDepthMul;
-    private Random random;
     private NeuralNetwork nn;
+    private Set<GameState> visitedStates;
+    private Map<GameState, double[]> policies;
+    private Map<GameState, double[]> qValues;
+    private Map<GameState, int[]> frequencyOfActions;
 
-    public HisGranAha(int roundLength, int rolloutDepth, int treeDepthMul) {
-        this.roundLength = roundLength;
-        this.rolloutDepth = rolloutDepth;
-        this.treeDepthMul = treeDepthMul;
-        this.random = new Random();
+    public HisGranAha() {
         nn = new NeuralNetwork();
     }
 
     @Override
     public Action doMove(int agentID, GameState state) {
+        visitedStates = new HashSet<>();
+        policies = new HashMap<>();
+        qValues = new HashMap<>();
+        frequencyOfActions = new HashMap<>();
+
+        Set<GameState> initialStates = new HashSet<>();
         long finishTime = System.currentTimeMillis() + TIME_LIMIT;
-        MCTSNode root = new MCTSNode(
-                (agentID + state.getPlayerCount() - 1) % state.getPlayerCount(),
-                null,
-                Utils.generateAllActions(agentID, state.getPlayerCount())
-        );
 
         // Map each slot in the hand to the list of possible cards that could be in it.
         Map<Integer, List<Card>> possibleCards = DeckUtils.bindCard(agentID, state.getHand(agentID), state.getDeck().toList());
@@ -54,18 +43,17 @@ public class HisGranAha implements Agent {
         List<Integer> bindOrder = DeckUtils.bindOrder(possibleCards);
 
         while (System.currentTimeMillis() < finishTime) {
-            GameState currentState = state.getCopy();
-            IterationObject iterationObject = new IterationObject(agentID);
+            GameState stateCopy = state.getCopy();
 
             // Randomly choose one of the possible cards for each slot and assign it to them.
             // A card that is selected to be in one slot is guaranteed to not be chosen to be in another one.
             Map<Integer, Card> cardsInHand = DeckUtils.bindCards(bindOrder, possibleCards);
 
-            Deck deck = currentState.getDeck();
-            Hand myHand = currentState.getHand(agentID);
- 
+            Deck deck = stateCopy.getDeck();
+            Hand myHand = stateCopy.getHand(agentID);
+
             // Iterate over all the slots and assign each selected possible card to the slots, but this time using the
-            // Hand object. Also, remove each selected possible card from the Deck.
+            // Hand object, so as to modify the game state. Also, remove each selected possible card from the Deck.
             for (int slot = 0; slot < myHand.getSize(); slot++)
             {
                 Card cardInHand = cardsInHand.get(slot);
@@ -74,116 +62,150 @@ public class HisGranAha implements Agent {
             }
             deck.shuffle();
 
-            MCTSNode current = select(root, currentState, iterationObject);
-
+            initialStates.add(stateCopy);
+//            search(stateCopy, nn, agentID, agentID);
         }
+
+        return getBestExploitationAction(initialStates, agentID, state.getPlayerCount());
     }
 
-    protected MCTSNode select(MCTSNode root, GameState state, IterationObject iterationObject) {
-        MCTSNode current = root;
-        int treeDepth = calculateTreeDepthLimit(state);
-        boolean expandedNode = false;
+    protected double search(GameState state, NeuralNetwork nn, int thisAgentId, int nextAgentID) {
+        if (state.isGameOver()) {
+            return state.getScore();
+        }
 
-        while (!state.isGameOver() && current.getDepth() < treeDepth && !expandedNode) {
-            MCTSNode next;
-            // If all legal actions from the current node have been generated before, select the node at which we arrive
-            // by using UCT for choosing the action we should take.
-            if (current.fullyExpanded(state)) {
-                next = current.getUCTNode(state);
-            }
-            // If at least one legal action has not been generated before, expand the current node and set the flag of
-            // expanding a node to true.
-            else {
-                next = expand(current, state);
-                expandedNode = true;
-            }
+        int playerCount = state.getPlayerCount();
 
-            if (next == null) {
-                // If all follow on states explored so far are null, we are now a leaf node
-                // Ok to early return here - we will have applied current last time round the loop!
-                return current;
-            }
-            // Move one step further in the tree (we move to the node that resulted from the expansion operation or from
-            // using the UCT method).
-            current = next;
+        if (!visitedStates.contains(state)) {
+            visitedStates.add(state);
+            int agentOffset = getPlayerOffset(thisAgentId, nextAgentID, playerCount);
+            NNState nnState = new NNState(state, agentOffset);
+            NeuralNetwork.NeuralNetworkOutput nnOutputs = nn.predict(nnState);
+            policies.put(state, nnOutputs.policy);
+            return nnOutputs.value;
+        }
 
-            int agent = current.getAgent();
-            int lives = state.getLives();
-            int score = state.getScore();
+        double maxUCB = -Double.MAX_VALUE;
+        int bestActionId = -1;
 
-            // This is the action we performed for getting to this state.
-            Action action = current.getAction();
-            if (action != null) {
-                // Apply the action so that the simulated state is affected and the simulated game progresses.
-                action.apply(agent, state);
-            }
+        Collection<Integer> legalActionIds = getPlayerLegalMoves(state, nextAgentID)
+                .stream()
+                .map(action -> getActionId(action, thisAgentId, playerCount))
+                .collect(Collectors.toCollection(ArrayList::new));
 
-            // Update the values of lives lost and points gain if the action taken was from our agent.
-            if (iterationObject.isMyGo(agent)) {
-                if (state.getLives() < lives) {
-                    iterationObject.incrementLivesLostMyGo();
-                }
-                if (state.getScore() > score) {
-                    iterationObject.incrementPointsGainedMyGo();
-                }
+        for (int legalActionId : legalActionIds) {
+            double qValue = qValues.getOrDefault(state, new double[NUM_ACTIONS])[legalActionId];
+            double policy = policies.getOrDefault(state, new double[NUM_ACTIONS])[legalActionId];
+            int[] freqOfActionsInState = frequencyOfActions.getOrDefault(state, new int[NUM_ACTIONS]);
+            int totalFreqOfActionsInState = Arrays.stream(freqOfActionsInState).sum();
+            double actionFreq = freqOfActionsInState[legalActionId];
+            double actionUCB = qValue + EXPLORATION_CONST * policy * Math.sqrt(totalFreqOfActionsInState) / (1 + actionFreq);
+            if (actionUCB > maxUCB) {
+                maxUCB = actionUCB;
+                bestActionId = legalActionId;
             }
         }
-        return current;
+
+        Action bestAction = getAction(bestActionId, thisAgentId, playerCount);
+        GameState nextState = state.getCopy();
+        bestAction.apply(nextAgentID, nextState);
+        double value = search(state, nn, thisAgentId, (nextAgentID + 1) % playerCount);
+
+        double[] qValuesForState = qValues.get(state);
+        int freqOfBestAction = frequencyOfActions.get(state)[bestActionId];
+        qValuesForState[bestActionId] = (freqOfBestAction * qValuesForState[bestActionId] + value) / (freqOfBestAction + 1);
+        frequencyOfActions.get(state)[bestActionId]++;
+
+        return value;
     }
 
-    protected int calculateTreeDepthLimit(GameState state){
-        return (state.getPlayerCount() * treeDepthMul) + 1;
+    protected Collection<Action> getPlayerLegalMoves(GameState state, int agentID) {
+        Collection<Action> allPossibleActions = Utils.generateAllActions(agentID, state.getPlayerCount());
+        return allPossibleActions.stream().filter(action -> action.isLegal(agentID, state)).collect(Collectors.toList());
     }
 
-    protected MCTSNode expand(MCTSNode parent, GameState state) {
-        int nextAgentID = (parent.getAgent() + 1) % state.getPlayerCount();
-        // Randomly select one legal action that can be taken from the state, so as to expand the current MCTS node.
-        Action action = selectActionForExpand(state, parent, nextAgentID);
+    public int getActionId(Action action, int thisAgentId, int playerCount) {
+        if (action instanceof DiscardCard)
+            return ((DiscardCard) action).slot;
+        if (action instanceof PlayCard)
+            return 5 + ((PlayCard) action).slot;
 
-        // Return the current node if no legal action was found.
-        if (action == null) {
-            return parent;
+        int actionId = 0;
+        int playerToldId = 0;
+        if (action instanceof TellColour) {
+            actionId = 10 + ((TellColour) action).colour.ordinal();
+            playerToldId = ((TellColour) action).player;
         }
-        // If the legal action was already expanded from the current node, return the node which was already a child
-        // of the current one.
-        if (parent.containsChild(action)) {
-            return parent.getChild(action);
+        else if (action instanceof TellValue) {
+            actionId = 15 + ((TellValue) action).value - 1;
+            playerToldId = ((TellValue) action).player;
         }
 
-        // Creates a child node of the current node that is reached by the legal action obtained.
-        MCTSNode child = new MCTSNode(parent, nextAgentID, action, Utils.generateAllActions(nextAgentID, state.getPlayerCount()));
-
-        // Neural network prediction.
-        NeuralNetwork.NeuralNetworkOutput outputs = nn.predict(state);
-        child.setScore(outputs.value);
-        // Update Q-Values
-
-        parent.addChild(child);
-        return child;
+        int playerOffset = getPlayerOffset(thisAgentId, playerToldId, playerCount);
+        actionId = actionId + 10 * playerOffset;
+        return actionId;
     }
 
-    /**
-     * Select a new action for the expansion node.
-     *
-     * @param state   the game state to travel from
-     * @param agentID the AgentID to use for action selection
-     * @param node    the Node to use for expansion
-     * @return the next action to be added to the tree from this state.
-     */
-    protected Action selectActionForExpand(GameState state, MCTSNode node, int agentID) {
-        Collection<Action> legalActions = node.getLegalMoves(state, agentID);
-        if (legalActions.isEmpty()) {
-            return null;
+    public Action getAction(int actionId, int thisAgentId, int playerCount) {
+        if (actionId < 5)
+            return new DiscardCard(actionId);
+        if (actionId < 10)
+            return new PlayCard(actionId - 5);
+
+        int offset = actionId / 10 - 1;
+        int playerToTellId = (thisAgentId + offset) % playerCount;
+
+        if (actionId < 15 || (actionId >= 20 && actionId < 25) || (actionId >= 30 && actionId < 35) ||
+                (actionId >= 40 && actionId < 45) || (actionId >= 50 && actionId < 55)) {
+            int colourToTellId = actionId % 10;
+            CardColour colourToTell = null;
+            switch (colourToTellId) {
+                case 0: { colourToTell = CardColour.RED; break; }
+                case 1: { colourToTell = CardColour.BLUE; break; }
+                case 2: { colourToTell = CardColour.GREEN; break; }
+                case 3: { colourToTell = CardColour.ORANGE; break; }
+                case 4: { colourToTell = CardColour.WHITE; break; }
+            }
+            return new TellColour(playerToTellId, colourToTell);
         }
 
-        Iterator<Action> actionItr = legalActions.iterator();
+        int valueToTell = actionId % 10 - 4;
+        return new TellValue(playerToTellId, valueToTell);
+    }
 
-        int selected = random.nextInt(legalActions.size());
-        Action curr = actionItr.next();
-        for (int i = 0; i < selected; i++) {
-            curr = actionItr.next();
+    public Action getBestExploitationAction(Set<GameState> initialStates, int thisAgentId, int playerCount) {
+        double bestQValue = -Double.MAX_VALUE;
+        Action bestAction = null;
+        for (GameState state : initialStates) {
+            Pair<Action, Double> actionQValuePair = getBestExploitationAction(state, thisAgentId, playerCount);
+            if (actionQValuePair.getValue() > bestQValue) {
+                bestQValue = actionQValuePair.getValue();
+                bestAction = actionQValuePair.getKey();
+            }
+        }
+        return bestAction;
+    }
+
+    public Pair<Action, Double> getBestExploitationAction(GameState state, int thisAgentId, int playerCount) {
+        double[] qValuesForState = qValues.get(state);
+        double bestQValue = -Double.MAX_VALUE;
+        int bestActionId = -1;
+
+        for (int i = 0; i < qValuesForState.length; i++) {
+            if (qValuesForState[i] > bestQValue) {
+                bestQValue = qValuesForState[i];
+                bestActionId = i;
+            }
         }
 
-        return curr;
+        Action bestAction = getAction(bestActionId, thisAgentId, playerCount);
+        return new Pair<>(bestAction, bestQValue);
+    }
+
+    public int getPlayerOffset(int thisAgentId, int playerId, int playerCount) {
+        if (thisAgentId <= playerId)
+            return playerId - thisAgentId;
+        else
+            return playerCount - thisAgentId + playerId;
     }
 }
