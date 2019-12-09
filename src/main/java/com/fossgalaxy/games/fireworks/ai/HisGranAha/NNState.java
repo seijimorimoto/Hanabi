@@ -5,6 +5,7 @@ import com.fossgalaxy.games.fireworks.state.CardColour;
 import com.fossgalaxy.games.fireworks.state.Deck;
 import com.fossgalaxy.games.fireworks.state.GameState;
 
+import java.util.Arrays;
 import java.util.Collection;
 
 public class NNState {
@@ -18,6 +19,7 @@ public class NNState {
     private static final int MAX_NUM_CARD_REST = 2;
     private static final int NUM_FEATURES = 64;
 
+    int turnNumber; // It is not currently being used for training.
     int playerCount;
     int information;
     int cardColorRed;
@@ -28,10 +30,11 @@ public class NNState {
     int nextAgentOffset;
     int lives;
     int score;
-    int[][] deckCards;
+    int[][] deckCards; // It is not being used to determine if two NNStates are equal.
     int[][] discardCards;
 
     public NNState(GameState gameState, int nextAgentOffset) {
+        this.turnNumber = gameState.getTurnNumber();
         this.playerCount = gameState.getPlayerCount();
         this.information = gameState.getInfomation();
         this.cardColorRed = gameState.getTableValue(CardColour.RED);
@@ -125,5 +128,60 @@ public class NNState {
                     representation[reprIndex] = ((double) collection[i][j] / MAX_NUM_CARD_REST);
             }
         }
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj)
+            return true;
+        if (obj == null)
+            return false;
+        if (getClass() != obj.getClass())
+            return false;
+        NNState other = (NNState) obj;
+        if (turnNumber != other.turnNumber)
+            return false;
+        if (playerCount != other.playerCount)
+            return false;
+        if (information != other.information)
+            return false;
+        if (cardColorRed != other.cardColorRed)
+            return false;
+        if (cardColorBlue != other.cardColorBlue)
+            return false;
+        if (cardColorGreen != other.cardColorGreen)
+            return false;
+        if (cardColorOrange != other.cardColorOrange)
+            return false;
+        if (cardColorWhite != other.cardColorWhite)
+            return false;
+        if (nextAgentOffset != other.nextAgentOffset)
+            return false;
+        if (lives != other.lives)
+            return false;
+        if (score != other.score)
+            return false;
+        if (!Arrays.deepEquals(discardCards, other.discardCards))
+            return false;
+        return true;
+    }
+
+    @Override
+    public int hashCode() {
+        final int prime = 31;
+        int result = 1;
+        result = prime * result + Integer.hashCode(turnNumber);
+        result = prime * result + Integer.hashCode(playerCount);
+        result = prime * result + Integer.hashCode(information);
+        result = prime * result + Integer.hashCode(cardColorRed);
+        result = prime * result + Integer.hashCode(cardColorBlue);
+        result = prime * result + Integer.hashCode(cardColorGreen);
+        result = prime * result + Integer.hashCode(cardColorOrange);
+        result = prime * result + Integer.hashCode(cardColorWhite);
+        result = prime * result + Integer.hashCode(nextAgentOffset);
+        result = prime * result + Integer.hashCode(lives);
+        result = prime * result + Integer.hashCode(score);
+        result = prime * result + Arrays.deepHashCode(discardCards);
+        return result;
     }
 }
