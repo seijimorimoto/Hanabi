@@ -5,24 +5,30 @@ import com.fossgalaxy.games.fireworks.ai.iggi.Utils;
 import com.fossgalaxy.games.fireworks.ai.rule.logic.DeckUtils;
 import com.fossgalaxy.games.fireworks.state.*;
 import com.fossgalaxy.games.fireworks.state.actions.*;
-import javafx.util.Pair;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
 public class HisGranAha implements Agent {
     public static final double EXPLORATION_CONST = Math.sqrt(2);
+    public static final String MODEL_CONFIG_PATH = "hanabi_nn_simpler.json";
+    public static final String MODEL_WEIGHTS_PATH = "hanabi_nn_simpler_weights.h5";
     public static final int NUM_ACTIONS = 60;
     public static final int TIME_LIMIT = 1000;
 
     private NeuralNetwork nn;
-    private Set<GameState> visitedStates;
-    private Map<GameState, double[]> policies;
-    private Map<GameState, double[]> qValues;
-    private Map<GameState, int[]> frequencyOfActions;
+    private Set<NNState> visitedStates;
+    private Map<NNState, double[]> policies;
+    private Map<NNState, double[]> qValues;
+    private Map<NNState, int[]> frequencyOfActions;
 
     public HisGranAha() {
         nn = new NeuralNetwork();
+        try {
+            nn.importKerasModel(MODEL_CONFIG_PATH, MODEL_WEIGHTS_PATH);
+        } catch (Exception e) {
+            System.err.println("Could not load the Neural Network Keras model");
+        }
     }
 
     @Override
@@ -32,7 +38,6 @@ public class HisGranAha implements Agent {
         qValues = new HashMap<>();
         frequencyOfActions = new HashMap<>();
 
-        Set<GameState> initialStates = new HashSet<>();
         long finishTime = System.currentTimeMillis() + TIME_LIMIT;
 
         // Map each slot in the hand to the list of possible cards that could be in it.
@@ -62,11 +67,12 @@ public class HisGranAha implements Agent {
             }
             deck.shuffle();
 
-            initialStates.add(stateCopy);
-//            search(stateCopy, nn, agentID, agentID);
+            search(stateCopy, nn, agentID, agentID);
         }
 
-        return getBestExploitationAction(initialStates, agentID, state.getPlayerCount());
+        int agentOffset = getPlayerOffset(agentID, agentID, state.getPlayerCount());
+        NNState nnState = new NNState(state, agentOffset);
+        return getBestExploitationAction(nnState, agentID, state.getPlayerCount());
     }
 
     protected double search(GameState state, NeuralNetwork nn, int thisAgentId, int nextAgentID) {
@@ -75,13 +81,13 @@ public class HisGranAha implements Agent {
         }
 
         int playerCount = state.getPlayerCount();
+        int agentOffset = getPlayerOffset(thisAgentId, nextAgentID, playerCount);
+        NNState nnState = new NNState(state, agentOffset);
 
-        if (!visitedStates.contains(state)) {
-            visitedStates.add(state);
-            int agentOffset = getPlayerOffset(thisAgentId, nextAgentID, playerCount);
-            NNState nnState = new NNState(state, agentOffset);
+        if (!visitedStates.contains(nnState)) {
+            visitedStates.add(nnState);
             NeuralNetwork.NeuralNetworkOutput nnOutputs = nn.predict(nnState);
-            policies.put(state, nnOutputs.policy);
+            policies.put(nnState, nnOutputs.policy);
             return nnOutputs.value;
         }
 
@@ -94,9 +100,9 @@ public class HisGranAha implements Agent {
                 .collect(Collectors.toCollection(ArrayList::new));
 
         for (int legalActionId : legalActionIds) {
-            double qValue = qValues.getOrDefault(state, new double[NUM_ACTIONS])[legalActionId];
-            double policy = policies.getOrDefault(state, new double[NUM_ACTIONS])[legalActionId];
-            int[] freqOfActionsInState = frequencyOfActions.getOrDefault(state, new int[NUM_ACTIONS]);
+            double qValue = qValues.getOrDefault(nnState, new double[NUM_ACTIONS])[legalActionId];
+            double policy = policies.getOrDefault(nnState, new double[NUM_ACTIONS])[legalActionId];
+            int[] freqOfActionsInState = frequencyOfActions.getOrDefault(nnState, new int[NUM_ACTIONS]);
             int totalFreqOfActionsInState = Arrays.stream(freqOfActionsInState).sum();
             double actionFreq = freqOfActionsInState[legalActionId];
             double actionUCB = qValue + EXPLORATION_CONST * policy * Math.sqrt(totalFreqOfActionsInState) / (1 + actionFreq);
@@ -109,19 +115,24 @@ public class HisGranAha implements Agent {
         Action bestAction = getAction(bestActionId, thisAgentId, playerCount);
         GameState nextState = state.getCopy();
         bestAction.apply(nextAgentID, nextState);
-        double value = search(state, nn, thisAgentId, (nextAgentID + 1) % playerCount);
+        double value = search(nextState, nn, thisAgentId, (nextAgentID + 1) % playerCount);
 
-        double[] qValuesForState = qValues.get(state);
-        int freqOfBestAction = frequencyOfActions.get(state)[bestActionId];
+        double[] qValuesForState = qValues.getOrDefault(nnState, new double[NUM_ACTIONS]);
+        int[] freqOfActionsForState = frequencyOfActions.getOrDefault(nnState, new int[NUM_ACTIONS]);
+        int freqOfBestAction = freqOfActionsForState[bestActionId];
         qValuesForState[bestActionId] = (freqOfBestAction * qValuesForState[bestActionId] + value) / (freqOfBestAction + 1);
-        frequencyOfActions.get(state)[bestActionId]++;
+        freqOfActionsForState[bestActionId] = freqOfBestAction + 1;
+
+        qValues.put(nnState, qValuesForState);
+        frequencyOfActions.put(nnState, freqOfActionsForState);
 
         return value;
     }
 
     protected Collection<Action> getPlayerLegalMoves(GameState state, int agentID) {
         Collection<Action> allPossibleActions = Utils.generateAllActions(agentID, state.getPlayerCount());
-        return allPossibleActions.stream().filter(action -> action.isLegal(agentID, state)).collect(Collectors.toList());
+        List<Action> actions = allPossibleActions.stream().filter(action -> action.isLegal(agentID, state)).collect(Collectors.toList());
+        return actions;
     }
 
     public int getActionId(Action action, int thisAgentId, int playerCount) {
@@ -173,21 +184,8 @@ public class HisGranAha implements Agent {
         return new TellValue(playerToTellId, valueToTell);
     }
 
-    public Action getBestExploitationAction(Set<GameState> initialStates, int thisAgentId, int playerCount) {
-        double bestQValue = -Double.MAX_VALUE;
-        Action bestAction = null;
-        for (GameState state : initialStates) {
-            Pair<Action, Double> actionQValuePair = getBestExploitationAction(state, thisAgentId, playerCount);
-            if (actionQValuePair.getValue() > bestQValue) {
-                bestQValue = actionQValuePair.getValue();
-                bestAction = actionQValuePair.getKey();
-            }
-        }
-        return bestAction;
-    }
-
-    public Pair<Action, Double> getBestExploitationAction(GameState state, int thisAgentId, int playerCount) {
-        double[] qValuesForState = qValues.get(state);
+    public Action getBestExploitationAction(NNState nnState, int thisAgentId, int playerCount) {
+        double[] qValuesForState = qValues.get(nnState);
         double bestQValue = -Double.MAX_VALUE;
         int bestActionId = -1;
 
@@ -198,8 +196,7 @@ public class HisGranAha implements Agent {
             }
         }
 
-        Action bestAction = getAction(bestActionId, thisAgentId, playerCount);
-        return new Pair<>(bestAction, bestQValue);
+        return getAction(bestActionId, thisAgentId, playerCount);
     }
 
     public int getPlayerOffset(int thisAgentId, int playerId, int playerCount) {
