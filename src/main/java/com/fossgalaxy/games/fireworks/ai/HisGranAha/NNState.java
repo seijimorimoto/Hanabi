@@ -5,7 +5,11 @@ import com.fossgalaxy.games.fireworks.state.GameState;
 
 import java.util.Arrays;
 
+/**
+ * A representation of the state of the game to be used for a Neural Network.
+ */
 public class NNState {
+    // Normalization constants.
     public static final int MAX_SCORE = 25;
     private static final int MAX_PLAYER_COUNT = 5;
     private static final int MAX_INFO_TOKENS = 8;
@@ -13,6 +17,7 @@ public class NNState {
     private static final int MAX_LIVES = 3;
     private static final int NUM_FEATURES = 18;
 
+    // Features that are representative of the state of the game.
     int playerCount;
     int information;
     int nextAgentOffset;
@@ -21,6 +26,11 @@ public class NNState {
     int[] cardColourCounts;
     int score;
 
+    /**
+     * Constructs a compact representation of the state of the game for a Neural Network.
+     * @param gameState The GameState object containing all information about the current state.
+     * @param nextAgentOffset The offset of the agent that can take an action from the given state.
+     */
     public NNState(GameState gameState, int nextAgentOffset) {
         this.playerCount = gameState.getPlayerCount();
         this.information = gameState.getInfomation();
@@ -30,6 +40,11 @@ public class NNState {
         this.score = gameState.getScore();
     }
 
+    /**
+     * Registers the counts of each value and colour of successfully played cards in the game.
+     * @param state The game state from which to calculate the counts of each value and colour of
+     *              successfully played cards.
+     */
     public void setCardCounts(GameState state) {
         CardColour[] colours = { CardColour.RED, CardColour.BLUE, CardColour.GREEN, CardColour.ORANGE, CardColour.WHITE };
         this.cardColourCounts = new int[5];
@@ -43,6 +58,11 @@ public class NNState {
         }
     }
 
+    /**
+     * Normalizes the data in this state and transforms (flattens) it into a single vector of double
+     * precision values.
+     * @return The normalized vector representation of this state.
+     */
     public double[] getNormalizedFlattenedRepresentation() {
         double[] representation = new double[NUM_FEATURES];
         representation[0] = this.playerCount / ((double) MAX_PLAYER_COUNT);
@@ -54,6 +74,13 @@ public class NNState {
         return representation;
     }
 
+    /**
+     * Normalizes values of certain indices in an array based on the values of a given collection and
+     * the normalization constants for cards in piles.
+     * @param startIndex The starting index from which to normalize the data in the desired array.
+     * @param collection The array that will provide to normalize.
+     * @param representation The array that will be normalized starting in position 'startIndex'.
+     */
     public void setNormalizedCardCountInRepresentation(int startIndex, int[] collection, double[] representation) {
         for (int i = 0; i < collection.length; i++) {
             representation[startIndex + i] = collection[i] / ((double) MAX_CARDS_IN_PILE);

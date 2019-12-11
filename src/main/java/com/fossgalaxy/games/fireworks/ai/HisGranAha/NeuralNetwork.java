@@ -23,8 +23,14 @@ import org.nd4j.linalg.lossfunctions.LossFunctions;
 import java.io.File;
 import java.io.IOException;
 
-
+/**
+ * Container of a neural network model designed for Hanabi and represented internally as a DL4J
+ * ComputationGraph.
+ */
 public class NeuralNetwork {
+    /**
+     * Container for the outputs of the neural network.
+     */
     public static class NeuralNetworkOutput {
         public double[] policy;
         public double value;
@@ -38,13 +44,26 @@ public class NeuralNetwork {
     private ComputationGraph model;
     private MultiDataSetIterator modelIterator;
 
+    /**
+     * Makes a prediction based on an appropriate representation of a state of the game.
+     * @param state The state of the game from which to make a prediction.
+     * @return The output of the prediction.
+     */
     public NeuralNetworkOutput predict(NNState state) {
         double[] inputs = state.getNormalizedFlattenedRepresentation();
         return predict(inputs);
     }
 
+    /**
+     * Makes a prediction based on a vector containing double precision values for each of the
+     * features of the game state considered as inputs to the internal neural network model.
+     * @param stateFeatures The vector of values for each game state feature.
+     * @return The output of the prediction.
+     */
     public NeuralNetworkOutput predict(double[] stateFeatures) {
         INDArray inputsAsINDArray = Nd4j.create(stateFeatures, new int[]{stateFeatures.length});
+        // Increment the dimensionality by 1 to represent the batch_size, as that is how DL4J
+        // expects the inputs.
         inputsAsINDArray = Nd4j.expandDims(inputsAsINDArray, 0);
         INDArray[] outputs = this.model.output(inputsAsINDArray);
         double[] policy = outputs[0].toDoubleVector();
@@ -52,6 +71,9 @@ public class NeuralNetwork {
         return new NeuralNetworkOutput(policy, value);
     }
 
+    /**
+     * Creates the internal neural network model using DL4J API calls.
+     */
     public void compile() {
         ComputationGraphConfiguration.GraphBuilder confBuilder = new NeuralNetConfiguration.Builder()
                 .updater(new Adam(0.001))
@@ -67,21 +89,51 @@ public class NeuralNetwork {
         this.model.setListeners(new ScoreIterationListener(1000));
     }
 
+    /**
+     * Imports a neural network model that was built using the Keras API in Python.
+     * @param modelConfigPath The path to the configuration of the model.
+     * @param modelWeightsPath The path to the saved weights and parameters of the model.
+     * @throws IOException One of the paths was not found or could not be opened.
+     * @throws InvalidKerasConfigurationException The imported Keras model is invalid.
+     * @throws UnsupportedKerasConfigurationException The imported Keras model is not supported by DL4J.
+     */
     public void importKerasModel(String modelConfigPath, String modelWeightsPath)
             throws IOException, InvalidKerasConfigurationException, UnsupportedKerasConfigurationException {
         this.model = KerasModelImport.importKerasModelAndWeights(modelConfigPath, modelWeightsPath);
     }
 
+    /**
+     * Imports a neural network model that was built using the DL4J API.
+     * @param modelPath The path to the saved model.
+     * @param loadForRetraining Whether to load the model for retraining it or just for inference.
+     * @throws IOException The path to the saved model was not found or could not be opened.
+     */
     public void importDL4JModel(String modelPath, boolean loadForRetraining) throws IOException
     {
         this.model = ComputationGraph.load(new File(modelPath), loadForRetraining);
     }
 
+    /**
+     * Exports the internal neural network model to secondary memory.
+     * @param savePath The path to the location where the model is to be saved.
+     * @param canBeRetrained Whether to allow the model to be retrained if imported in the future.
+     * @throws IOException The path to the save path was not found or could not be accessed.
+     */
     public void saveModel(String savePath, boolean canBeRetrained) throws IOException
     {
         this.model.save(new File(savePath), canBeRetrained);
     }
 
+    /**
+     * Sets the data that will be used for training the internal neural network.
+     * @param trainDataSetPath The path to the location of the training data file.
+     * @param numLinesSkip Number of lines in the training data file that must be skipped before
+     *                     reaching the actual data.
+     * @param batchSize The number of training examples that will be used before performing an
+     *                  update to the trainable parameters.
+     * @throws InterruptedException An operation was inadvertently interrupted.
+     * @throws IOException The path to the training data file was not found or could not be opened.
+     */
     public void setTrainData(String trainDataSetPath, int numLinesSkip, int batchSize)
             throws InterruptedException, IOException {
         String delimiter = ",";
@@ -96,6 +148,10 @@ public class NeuralNetwork {
                 .build();
     }
 
+    /**
+     * Trains the internal neural network model.
+     * @param numEpochs The number of epochs to train the model.
+     */
     public void train(int numEpochs) {
         this.model.fit(modelIterator, numEpochs);
     }
