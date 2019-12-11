@@ -11,8 +11,8 @@ import java.util.stream.Collectors;
 
 public class HisGranAha implements Agent {
     public static final double EXPLORATION_CONST = Math.sqrt(2);
-    public static final String MODEL_CONFIG_PATH = "hanabi_nn_simpler.json";
-    public static final String MODEL_WEIGHTS_PATH = "hanabi_nn_simpler_weights.h5";
+    public static final String MODEL_CONFIG_PATH = "models/hanabi_nn_simpler.json";
+    public static final String MODEL_WEIGHTS_PATH = "models/hanabi_nn_simpler_weights.h5";
     public static final int NUM_ACTIONS = 60;
     public static final int TIME_LIMIT = 1000;
 

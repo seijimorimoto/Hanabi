@@ -18,25 +18,30 @@ public class App
 {
     public static void main( String[] args )
     {
-        int numPlayers = 4;
-        int numGames = 5;
-        String agentName = "HisGranAha";
+        int numPlayers = 5;
+        int numGames = 1;
+        String[] agentOthers = { "iggi", "piers", "flawed", "outer", "vdb-paper", "legal_random"};
+        String agentOurs = "mctsND";
 
         Random random = new Random();
         StatsSummary statsSummary = new BasicStats();
 
-        for (int i=0; i<numGames; i++) {
-            GameRunner runner = new GameRunner("test-game", numPlayers);
-
-            //add your agents to the game
-            for (int j=0; j<numPlayers; j++) {
-                // the player class keeps track of our state for us...
-                Player player = new AgentPlayer(agentName, AgentUtils.buildAgent(agentName));
-                runner.addNamedPlayer(agentName, player);
+        for (int i = 0; i < numGames; i++) {
+            for (int j = 0; j < agentOthers.length; j++) {
+                GameRunner runner = new GameRunner("test-game", numPlayers);
+                int positionOurs = random.nextInt(numPlayers);
+                for (int k = 0; k < numPlayers; k++) {
+                    if (k == positionOurs) {
+                        Player player = new AgentPlayer(agentOurs, AgentUtils.buildAgent(agentOurs));
+                        runner.addNamedPlayer(agentOurs, player);
+                    } else {
+                        Player player = new AgentPlayer(agentOthers[j], AgentUtils.buildAgent(agentOthers[j]));
+                        runner.addNamedPlayer(agentOthers[j], player);
+                    }
+                }
+                GameStats stats = runner.playGame(random.nextLong());
+                statsSummary.add(stats.score);
             }
-
-            GameStats stats = runner.playGame(random.nextLong());
-            statsSummary.add(stats.score);
         }
 
         //print out the stats
