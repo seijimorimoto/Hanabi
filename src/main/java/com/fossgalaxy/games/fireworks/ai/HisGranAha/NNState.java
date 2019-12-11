@@ -32,6 +32,7 @@ public class NNState {
     int score;
     int[][] deckCards; // It is not being used to determine if two NNStates are equal.
     int[][] discardCards;
+    double stateValue; // It is just used if part of a data gathering process.
 
     public NNState(GameState gameState, int nextAgentOffset) {
         this.turnNumber = gameState.getTurnNumber();
@@ -51,7 +52,12 @@ public class NNState {
         setDiscardCards(gameState.getDiscards());
     }
 
-    public void setDeckCards(Deck deck) {
+    public NNState(GameState gameState, int nextAgentOffset, double stateValue) {
+        this(gameState, nextAgentOffset);
+        this.stateValue = stateValue;
+    }
+
+        public void setDeckCards(Deck deck) {
         setCardsOnMatrix(deck.toList(), this.deckCards);
     }
 

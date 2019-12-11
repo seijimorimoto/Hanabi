@@ -38,17 +38,14 @@ public class MCTSNode {
 
     private double score;
     private int visits;
-
-    // Values needed for policy improvement.
-    private Map<Action, Double> qValues; // Q(s,a), where 's' is itself this node, since a node in MCTS represents a
-    // game state.
-    // For calculating N(s,a), we only have to do something in the lines of:
-    // N(s,a) = this.getChild(a).visits;
+    private int parentWasVisitedAndIWasLegalOld;
 
     protected Map<Action, Integer> legalChildVisits;
 
     protected final StatsSummary rolloutScores;
     protected final StatsSummary rolloutMoves;
+
+    private GameState state;
 
     public MCTSNode(Collection<Action> allUnexpandedActions) {
         this(null, -1, null, DEFAULT_EXP_CONST, allUnexpandedActions);
@@ -68,6 +65,11 @@ public class MCTSNode {
 
     public MCTSNode(MCTSNode parent, int agentId, Action moveToState, Collection<Action> allUnexpandedActions) {
         this(parent, agentId, moveToState, DEFAULT_EXP_CONST, allUnexpandedActions);
+    }
+
+    public MCTSNode(MCTSNode parent, int agentId, Action moveToState, Collection<Action> allUnexpandedActions, GameState state) {
+        this(parent, agentId, moveToState, DEFAULT_EXP_CONST, allUnexpandedActions);
+        this.state = state;
     }
 
     public MCTSNode(MCTSNode parent, int agentId, Action moveToState, double expConst, Collection<Action> allUnexpandedActions) {
@@ -100,7 +102,7 @@ public class MCTSNode {
             return 0;
         }
 
-        int legalVisits = parent.legalChildVisits.get(moveToState);
+        int legalVisits = MCTS.OLD_UCT_BEHAVIOUR ? parentWasVisitedAndIWasLegalOld : parent.legalChildVisits.get(moveToState);
         return ((score / MAX_SCORE) / visits) + (expConst * Math.sqrt(Math.log(legalVisits) / visits));
     }
 
@@ -136,6 +138,7 @@ public class MCTSNode {
                 continue;
             }
 
+            child.parentWasVisitedAndIWasLegalOld++;
             updateVisitCount(moveToMake);
 
             double childScore = child.getUCTValue() + (random.nextDouble() * EPSILON);
@@ -288,11 +291,15 @@ public class MCTSNode {
         }
     }
 
-    public void setScore(double score) {
-        this.score = score;
+    public int getVisits() {
+        return this.visits;
     }
 
-    public void updateQValue() {
+    public GameState getGameState() {
+        return this.state;
+    }
 
+    public void setGameState(GameState state) {
+        this.state = state;
     }
 }
