@@ -322,7 +322,6 @@ public class MCTS implements Agent {
             return;
 
         GameState state =  node.getGameState();
-        double stateValue = node.getUCTValue();
         int playerCount = state.getPlayerCount();
 
         int nextAgentId = (node.getAgent() + 1) % playerCount;
@@ -332,7 +331,7 @@ public class MCTS implements Agent {
         else
             nextAgentOffset = playerCount - thisAgentId + nextAgentId;
 
-        NNState nnState = new NNState(state, nextAgentOffset, stateValue);
+        NNState nnState = new NNState(state, nextAgentOffset);
 
         double[] policy = new double[60];
         Arrays.fill(policy, 0);

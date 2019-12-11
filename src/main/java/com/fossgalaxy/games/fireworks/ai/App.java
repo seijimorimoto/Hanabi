@@ -21,7 +21,7 @@ public class App
         int numPlayers = 5;
         int numGames = 1;
         String[] agentOthers = { "iggi", "piers", "flawed", "outer", "vdb-paper", "legal_random"};
-        String agentOurs = "mctsND";
+        String agentOurs = "HisGranAha";
 
         Random random = new Random();
         StatsSummary statsSummary = new BasicStats();
