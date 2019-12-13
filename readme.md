@@ -1,19 +1,9 @@
-# Fireworks sample controllers
+# Hanabi Agent
 
-## This contains a few things
-* A runner so you can test your agent
-* A sample agent
-* A sample rule based agent
+An agent (HisGranAha) implementing MCTS and using a neural network for predicting policy and state
+values in order to replace the rollout phase of MCTS, incrementing the speed of the algorithm and
+therefore increasing the percentage of the state space explored in a MCTS simulation.
 
-## Submitting your entry
-* You should rename the package to your username on the submission server
-* You should change the agent class name to your username
-
-## Technical Details
-Build script overrides:
-
-```
-# TODO check the package is named correctly
-mvn -o -B -Djar.finalName=$SUBMIT_USERNAME clean package
-```
-
+The agent was built for being able to play in the [Fireworks framework](https://git.fossgalaxy.com/iggi/hanabi)
+and it was developed on top of the [starter package](http://hanabi.fosslab.uk/) provided by the
+framework itself.
